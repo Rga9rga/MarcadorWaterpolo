@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marcador Waterpolo TV Max - Logos Grandes</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1"
+      }
+    }
+    </script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Ocultar scrollbar */
+        ::-webkit-scrollbar { width: 0px; height: 0px; }
+        body { -ms-overflow-style: none; scrollbar-width: none; margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef, useCallback } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Play, Pause, Volume2, Upload, Monitor, Laptop, 
+            Plus, Minus, Settings, X, Edit3, Sun, Moon, LogOut, 
+            Bell, ArrowRight, Check, Eye, EyeOff, Image as ImageIcon, Trophy, Move
+        } from 'lucide-react';
+
+        const CHANNEL_NAME = 'waterpolo_final_v15_worker';
+
+        // --- WORKER BLOB ---
+        const workerCode = `
+            let intervalId;
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    if (!intervalId) {
+                        intervalId = setInterval(() => postMessage('tick'), 20); 
+                    }
+                } else if (e.data === 'stop') {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+            };
+        `;
+        const workerBlob = new Blob([workerCode], { type: "application/javascript" });
+        const workerUrl = URL.createObjectURL(workerBlob);
+
+        const DEFAULT_CONFIG = {
+            periods: 4,
+            periodLength: 8,
+            shotFull: 28,
+            shotReset: 18,
+            lastMinuteBell: true
+        };
+
+        const INITIAL_STATE = {
+            config: DEFAULT_CONFIG,
+            mainTime: 8 * 60,
+            shotTime: 28,
+            isRunning: false,
+            isShotActive: false,
+            shotClockExpired: false,
+            period: 1,
+            periodFinished: false,
+            home: { name: 'LOCAL', score: 0, color: '#F1F5F9', logo: null },
+            away: { name: 'VISITANTE', score: 0, color: '#1e40af', logo: null },
+            buzzerTrigger: 0,
+            showGoalAnimation: null, 
+            bellAlert: null,
+            darkMode: true
+        };
+
+        // --- HELPER TIEMPO ---
+        const formatTime = (secs) => {
+            if (secs <= 10 && secs > 0) {
+                const s = Math.floor(secs);
+                const cs = Math.floor((secs % 1) * 100);
+                return `${s}.${cs.toString().padStart(2, '0')}`;
+            }
+            if (secs < 60 && secs > 10) {
+                const s = Math.floor(secs);
+                const ds = Math.floor((secs % 1) * 10);
+                return `${s}.${ds}`;
+            }
+            const m = Math.floor(secs / 60);
+            const s = Math.floor(secs % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        };
+
+        // --- DISPLAY COMPONENT (MODIFICADO PARA LOGOS GRANDES) ---
+        const ScoreboardDisplay = ({ state, isPreview = false }) => {
+            if (!state || !state.home || !state.away) return null;
+
+            const { home, away, mainTime, shotTime, showGoalAnimation, periodFinished, darkMode, isRunning } = state;
+            const scoreDiff = home.score - away.score;
+            
+            const getBackgroundStyle = () => {
+                const opacity = isPreview ? 0.4 : 0.6;
+                const baseColor = darkMode ? 'black' : '#f8fafc'; 
+                if (scoreDiff > 0) return { background: `linear-gradient(90deg, ${home.color}${Math.floor(opacity*255).toString(16)} 0%, ${baseColor} 60%)` };
+                if (scoreDiff < 0) return { background: `linear-gradient(-90deg, ${away.color}${Math.floor(opacity*255).toString(16)} 0%, ${baseColor} 60%)` };
+                return { background: darkMode ? 'radial-gradient(circle, #1e293b 0%, black 100%)' : 'radial-gradient(circle, #e2e8f0 0%, white 100%)' };
+            };
+
+            const txtPrimary = darkMode ? 'text-white' : 'text-slate-900';
+            const txtSecondary = darkMode ? 'text-slate-400' : 'text-slate-500';
+            const bgCard = darkMode ? 'bg-slate-900/80' : 'bg-white/80';
+            const borderColor = darkMode ? 'border-slate-800' : 'border-slate-300';
+
+            const getClockClass = () => {
+                let base = `font-mono font-bold leading-none tracking-tighter transition-all duration-75 drop-shadow-2xl `;
+                if (mainTime <= 10 && mainTime > 0) base += "text-[30vh] "; 
+                else if (mainTime < 60) base += "text-[30vh] "; 
+                else base += "text-[28vh] ";
+
+                if (!isRunning && mainTime > 0) base += "opacity-40 blur-[1px] scale-95 grayscale "; 
+                else base += "opacity-100 scale-100 ";
+
+                if (mainTime <= 10 && mainTime > 0 && isRunning) {
+                    const isBeat = (mainTime % 1) > 0.8;
+                    return base + `text-red-500 ${isBeat ? 'scale-105 brightness-125' : 'scale-100'}`;
+                }
+                if (mainTime === 0) return base + 'text-red-600 animate-pulse';
+                if (mainTime < 60) return base + 'text-red-500'; 
+                if (mainTime < state.config.periodLength * 60 * 0.5) return base + 'text-yellow-400';
+                return base + (darkMode ? 'text-green-400' : 'text-green-600');
+            };
+
+            const getShotClockClass = () => {
+                let base = "font-mono font-bold text-[24vh] leading-none transition-all duration-100 "; 
+                if (state.shotClockExpired) return base + 'text-red-600 opacity-50';
+                if (!state.isShotActive && !state.shotClockExpired) return base + 'text-slate-500 opacity-50'; 
+
+                if (shotTime <= 5) {
+                    const isBeat = (shotTime % 1) > 0.8; 
+                    return base + `text-red-500 ${isBeat ? 'scale-110 brightness-150' : 'scale-100'} drop-shadow-[0_0_30px_rgba(239,68,68,0.8)]`;
+                }
+                if (shotTime <= 10) {
+                    const isTenAlert = shotTime > 9.5; 
+                    return base + `text-yellow-400 ${isTenAlert ? 'scale-105 brightness-150' : ''}`;
+                }
+                return base + (darkMode ? 'text-white' : 'text-slate-800');
+            };
+
+            const hideShotClock = mainTime < Math.ceil(shotTime) && mainTime > 0;
+
+            return (
+                <div className={`fixed inset-0 overflow-hidden font-sans select-none flex flex-col ${darkMode ? 'bg-black' : 'bg-white'}`}>
+                    <div className="absolute inset-0 transition-all duration-1000 ease-in-out z-0" style={getBackgroundStyle()}></div>
+                    <div className="absolute inset-0 opacity-[0.04] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] z-0 pointer-events-none"></div>
+                    
+                    {isRunning && mainTime <= 10 && mainTime > 0 && (
+                        <div className="absolute inset-0 border-[20px] border-red-600/40 pointer-events-none z-50 transition-opacity duration-200" 
+                             style={{ opacity: (mainTime % 1) > 0.5 ? 1 : 0.2, boxShadow: 'inset 0 0 100px rgba(220, 38, 38, 0.4)' }}></div>
+                    )}
+
+                    {/* OVERLAYS (GOL, FIN CUARTO) */}
+                    {showGoalAnimation && (
+                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200 overflow-hidden">
+                        <div className="absolute inset-0 animate-[ping_1.5s_ease-out_infinite] opacity-20 rounded-full scale-150" style={{backgroundColor: showGoalAnimation === 'home' ? home.color : away.color}}></div>
+                        <div className="relative z-10 flex flex-col items-center transform transition-all animate-in zoom-in-50 duration-300">
+                            {/* Logo en overlay de GOL también más grande */}
+                            {state[showGoalAnimation].logo && <img src={state[showGoalAnimation].logo} className="h-32 w-32 object-contain mb-4 animate-bounce"/>}
+                            <h1 className="text-[25vw] font-black italic text-transparent bg-clip-text animate-bounce drop-shadow-[0_0_60px_rgba(255,255,255,0.9)] leading-none"
+                                style={{ backgroundImage: `linear-gradient(to bottom, #fff, ${showGoalAnimation === 'home' ? home.color : away.color})`, WebkitTextStroke: '3px white' }}>GOL</h1>
+                            <h2 className="text-[10vw] text-white font-black uppercase mt-8 drop-shadow-xl tracking-wider leading-none">{showGoalAnimation === 'home' ? home.name : away.name}</h2>
+                        </div>
+                    </div>
+                    )}
+
+                    {periodFinished && !showGoalAnimation && (
+                        <div className="absolute inset-0 z-40 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center text-white animate-in fade-in duration-700">
+                            <div className="w-full max-w-[90vw] border-y-8 border-blue-600 py-12 bg-slate-900/50 flex flex-col items-center">
+                                <h1 className="text-[8vw] font-black uppercase tracking-[0.1em] text-blue-500 mb-16 leading-none">Final Periodo {state.period}</h1>
+                                <div className="flex items-center justify-center gap-20 md:gap-40 w-full">
+                                    <div className="flex flex-col items-center">
+                                        <div className="text-[5vw] font-bold mb-6 opacity-80 uppercase tracking-widest">{home.name}</div>
+                                        <div className="text-[20vh] font-mono font-bold leading-none" style={{color: home.color, textShadow: `0 0 80px ${home.color}60`}}>{home.score}</div>
+                                    </div>
+                                    <div className="h-64 w-2 bg-slate-700 rounded-full opacity-30"></div>
+                                    <div className="flex flex-col items-center">
+                                        <div className="text-[5vw] font-bold mb-6 opacity-80 uppercase tracking-widest">{away.name}</div>
+                                        <div className="text-[20vh] font-mono font-bold leading-none" style={{color: away.color, textShadow: `0 0 80px ${away.color}60`}}>{away.score}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="relative z-20 flex flex-col h-full p-2 md:p-4 gap-2">
+                        {/* HEADER */}
+                        <div className="flex justify-center h-[10%] shrink-0">
+                            <div className={`${bgCard} border-b-4 ${borderColor} px-16 py-1 rounded-b-[3rem] flex items-center gap-6 shadow-2xl backdrop-blur-sm justify-center`}>
+                                <span className={`uppercase text-2xl md:text-3xl font-bold tracking-widest ${txtSecondary}`}>Periodo</span>
+                                <div className={`text-6xl md:text-8xl font-black ${txtPrimary} leading-none flex items-center justify-center w-24 h-24 rounded-2xl ${darkMode?'bg-slate-800':'bg-slate-100'}`}>{state.period}</div>
+                            </div>
+                        </div>
+
+                        {/* GRID PRINCIPAL */}
+                        <div className="flex-1 flex items-center justify-between pb-4 w-full">
+                            
+                            {/* LOCAL (LOGO DE FONDO GIGANTE) */}
+                            <div className="flex-1 flex flex-col items-center justify-center h-full relative overflow-hidden" style={{maxWidth: '35%'}}>
+                                {/* CAPA FONDO LOGO */}
+                                <div className="absolute inset-0 flex items-center justify-center z-0 opacity-10 p-8 pointer-events-none">
+                                    {home.logo ? 
+                                        <img src={home.logo} className="w-full h-full object-contain drop-shadow-2xl grayscale-[0.1]" /> : 
+                                        <div className={`text-[40vh] font-black opacity-10 flex items-center justify-center`} style={{color: home.color}}>L</div>
+                                    }
+                                </div>
+                                
+                                {/* CAPA CONTENIDO (ENCIMA DEL LOGO) */}
+                                <div className="relative z-10 w-full flex flex-col items-center justify-center">
+                                    {scoreDiff > 0 && <Trophy className="absolute -top-24 text-yellow-400 w-20 h-20 animate-bounce drop-shadow-xl z-20" />}
+                                    
+                                    <h2 className={`text-[4vw] font-black uppercase text-center leading-none mb-2 drop-shadow-lg w-full px-2 truncate ${txtPrimary}`} 
+                                        style={{textShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>
+                                        {home.name}
+                                    </h2>
+                                    
+                                    <div className="text-[45vh] font-mono font-bold leading-none drop-shadow-2xl transform scale-y-110" 
+                                         style={{color: home.color, textShadow: '8px 8px 0px rgba(0,0,0,0.4), 0 0 40px rgba(0,0,0,0.2)'}}>
+                                         {home.score}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* CENTRO */}
+                            <div className="flex flex-col items-center justify-between h-full pt-4 z-10" style={{minWidth: '30%', maxWidth: '30%'}}>
+                                <div className="flex flex-col items-center justify-center flex-1 mb-2">
+                                    <div className={getClockClass()}>{formatTime(mainTime)}</div>
+                                    <div className={`uppercase font-bold text-2xl tracking-[0.6em] -mt-4 opacity-60 ${txtSecondary}`}>{isRunning ? "JUEGO" : "PARADO"}</div>
+                                </div>
+
+                                {!hideShotClock && !periodFinished && (
+                                    <div className="w-full flex justify-center mb-8">
+                                        <div className={`relative ${bgCard} border-[8px] w-full py-0 rounded-[2rem] shadow-2xl flex items-center justify-center backdrop-blur-md transition-all duration-200 ${shotTime <= 5 ? 'border-red-600 shadow-[0_0_80px_rgba(220,38,38,0.5)]' : shotTime <= 10 ? 'border-yellow-500 shadow-[0_0_50px_rgba(234,179,8,0.3)]' : `${borderColor}`}`}>
+                                            <span className={`absolute -top-6 ${darkMode?'bg-black border-slate-700':'bg-white border-slate-200'} ${txtPrimary} border px-8 py-1 rounded-full font-black uppercase tracking-widest text-xl shadow-lg`}>Posesión</span>
+                                            <div className={getShotClockClass()}>{state.shotClockExpired ? "00" : Math.ceil(shotTime)}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* VISITANTE (LOGO DE FONDO GIGANTE) */}
+                            <div className="flex-1 flex flex-col items-center justify-center h-full relative overflow-hidden" style={{maxWidth: '35%'}}>
+                                {/* CAPA FONDO LOGO */}
+                                <div className="absolute inset-0 flex items-center justify-center z-0 opacity-10 p-8 pointer-events-none">
+                                    {away.logo ? 
+                                        <img src={away.logo} className="w-full h-full object-contain drop-shadow-2xl grayscale-[0.1]" /> : 
+                                        <div className={`text-[40vh] font-black opacity-10 flex items-center justify-center`} style={{color: away.color}}>V</div>
+                                    }
+                                </div>
+
+                                {/* CAPA CONTENIDO */}
+                                <div className="relative z-10 w-full flex flex-col items-center justify-center">
+                                    {scoreDiff < 0 && <Trophy className="absolute -top-24 text-yellow-400 w-20 h-20 animate-bounce drop-shadow-xl z-20" />}
+                                    
+                                    <h2 className={`text-[4vw] font-black uppercase text-center leading-none mb-2 drop-shadow-lg w-full px-2 truncate ${txtPrimary}`}
+                                        style={{textShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>
+                                        {away.name}
+                                    </h2>
+                                    
+                                    <div className="text-[45vh] font-mono font-bold leading-none drop-shadow-2xl transform scale-y-110" 
+                                         style={{color: away.color, textShadow: '8px 8px 0px rgba(0,0,0,0.4), 0 0 40px rgba(0,0,0,0.2)'}}>
+                                         {away.score}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- APP PRINCIPAL ---
+        const WaterPoloScoreboardFinal = () => {
+            const [mode, setMode] = useState('welcome'); 
+            const [state, setState] = useState(INITIAL_STATE);
+            const [showPreview, setShowPreview] = useState(true);
+            
+            const stateRef = useRef(INITIAL_STATE);
+            const lastTickRef = useRef(0);
+            const workerRef = useRef(null); 
+            
+            const [previewPos, setPreviewPos] = useState({ x: window.innerWidth - 340, y: window.innerHeight - 200 });
+            const [isDragging, setIsDragging] = useState(false);
+            const dragStartRef = useRef({ x: 0, y: 0 });
+
+            const [showTimeEditor, setShowTimeEditor] = useState(false);
+            const [editData, setEditData] = useState({ m: 8, s: 0, shot: 30 });
+            const [setupConfig, setSetupConfig] = useState(DEFAULT_CONFIG);
+
+            const channelRef = useRef(null);
+
+            useEffect(() => { stateRef.current = state; }, [state]);
+
+            useEffect(() => {
+                channelRef.current = new BroadcastChannel(CHANNEL_NAME);
+                channelRef.current.onmessage = (event) => {
+                    if (event.data) setState(prev => ({ ...prev, ...event.data }));
+                };
+                const saved = localStorage.getItem('wp_final_v15_state');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed.config) setState(parsed);
+                    } catch (e) {}
+                }
+                return () => channelRef.current.close();
+            }, []);
+
+            useEffect(() => {
+                workerRef.current = new Worker(workerUrl);
+                workerRef.current.onmessage = (e) => {
+                    if (e.data === 'tick') {
+                        handleTick();
+                    }
+                };
+                return () => workerRef.current.terminate();
+            }, []);
+
+            const handleTick = useCallback(() => {
+                const now = performance.now();
+                if (lastTickRef.current === 0) lastTickRef.current = now;
+                
+                const delta = (now - lastTickRef.current) / 1000;
+                lastTickRef.current = now;
+
+                let currentState = { ...stateRef.current }; 
+                
+                if (!currentState.isRunning) {
+                    lastTickRef.current = 0;
+                    return;
+                }
+
+                let { mainTime, shotTime, isShotActive, shotClockExpired, buzzerTrigger, bellAlert, period, config } = currentState;
+                let shouldStop = false;
+                let periodDone = false;
+
+                if (mainTime > 0) {
+                    mainTime = Math.max(0, mainTime - delta);
+                } else {
+                    mainTime = 0;
+                    shouldStop = true;
+                    periodDone = true; 
+                    buzzerTrigger++; 
+                }
+
+                if (isShotActive && !shotClockExpired) {
+                    if (shotTime > 0) {
+                        shotTime = Math.max(0, shotTime - delta);
+                    } else {
+                        shotTime = 0;
+                        shotClockExpired = true;
+                        buzzerTrigger++; 
+                    }
+                }
+
+                if (config.lastMinuteBell && period === config.periods) {
+                    if (Math.abs(mainTime - 90) < 0.1) bellAlert = 'warning'; 
+                    else if (Math.abs(mainTime - 60) < 0.1) bellAlert = 'ring'; 
+                    else if (mainTime < 58) bellAlert = null;
+                }
+
+                const newState = {
+                    ...currentState,
+                    mainTime,
+                    shotTime,
+                    isRunning: shouldStop ? false : currentState.isRunning,
+                    periodFinished: periodDone ? true : currentState.periodFinished,
+                    shotClockExpired,
+                    buzzerTrigger,
+                    bellAlert
+                };
+
+                setState(newState);
+                channelRef.current?.postMessage(newState);
+                
+                if (Math.floor(mainTime) !== Math.floor(currentState.mainTime)) {
+                     localStorage.setItem('wp_final_v15_state', JSON.stringify(newState));
+                }
+
+            }, []);
+
+            useEffect(() => {
+                if (mode === 'controller') {
+                    if (state.isRunning) {
+                        workerRef.current.postMessage('start');
+                        if (lastTickRef.current === 0) lastTickRef.current = performance.now();
+                    } else {
+                        workerRef.current.postMessage('stop');
+                        lastTickRef.current = 0;
+                    }
+                }
+            }, [state.isRunning, mode]);
+
+            const playTone = (freq, type, duration) => {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+                osc.stop(ctx.currentTime + duration);
+            };
+
+            useEffect(() => { if (state.buzzerTrigger > 0) playTone(400, 'sawtooth', 2.0); }, [state.buzzerTrigger]);
+            useEffect(() => { if (state.bellAlert === 'ring' && mode === 'controller') playTone(800, 'sine', 1); }, [state.bellAlert, mode]);
+
+            const broadcast = (newState) => {
+                setState(newState);
+                channelRef.current?.postMessage(newState);
+                localStorage.setItem('wp_final_v15_state', JSON.stringify(newState));
+            };
+
+            const actions = {
+                startGame: () => {
+                    const newState = { ...INITIAL_STATE, config: setupConfig, mainTime: setupConfig.periodLength * 60, shotTime: setupConfig.shotFull, darkMode: state.darkMode };
+                    broadcast(newState);
+                    setMode('controller');
+                },
+                toggleMain: () => broadcast({ ...state, isRunning: !state.isRunning }),
+                resetShot: (secs) => broadcast({ ...state, shotTime: secs, shotClockExpired: false, isShotActive: true }),
+                toggleShotActive: () => broadcast({ ...state, isShotActive: !state.isShotActive }),
+                addGoal: (team) => {
+                    const cur = { ...state }; cur[team].score++; cur.showGoalAnimation = team;
+                    broadcast(cur);
+                    setTimeout(() => {
+                        const fresh = { ...stateRef.current }; fresh.showGoalAnimation = null;
+                        setState(fresh);
+                        channelRef.current?.postMessage(fresh);
+                    }, 3500);
+                },
+                nextPeriod: () => broadcast({ ...state, period: state.period + 1, mainTime: state.config.periodLength * 60, shotTime: state.config.shotFull, isRunning: false, isShotActive: false, shotClockExpired: false, periodFinished: false, bellAlert: null }),
+                adjustPeriod: (d) => broadcast({ ...state, period: Math.max(1, Math.min(state.config.periods, state.period + d)) }),
+                updateTeam: (t, k, v) => { const s = JSON.parse(JSON.stringify(state)); s[t][k] = v; broadcast(s); },
+                handleLogo: (t, e) => {
+                    const f = e.target.files[0];
+                    if(f && f.size < 500000) {
+                        const r = new FileReader();
+                        r.onload = () => actions.updateTeam(t, 'logo', r.result);
+                        r.readAsDataURL(f);
+                    } else if(f) alert("Imagen <500kb");
+                },
+                manualEditApply: () => {
+                    broadcast({ ...state, mainTime: (editData.m * 60) + editData.s, shotTime: editData.shot, shotClockExpired: false });
+                    setShowTimeEditor(false);
+                },
+                toggleDarkMode: () => broadcast({ ...state, darkMode: !state.darkMode })
+            };
+
+            const handleMouseDown = (e) => { setIsDragging(true); dragStartRef.current = { x: e.clientX - previewPos.x, y: e.clientY - previewPos.y }; };
+            useEffect(() => {
+                const move = (e) => { if(isDragging) setPreviewPos({ x: e.clientX - dragStartRef.current.x, y: e.clientY - dragStartRef.current.y }); };
+                const up = () => setIsDragging(false);
+                if(isDragging) { window.addEventListener('mousemove', move); window.addEventListener('mouseup', up); }
+                return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+            }, [isDragging]);
+
+            if (mode === 'setup') return <SetupView setupConfig={setupConfig} setSetupConfig={setSetupConfig} setMode={setMode} startGame={actions.startGame} />;
+            if (mode === 'welcome') return <WelcomeView setMode={setMode} />;
+            if (mode === 'display') return <ScoreboardDisplay state={state} />;
+
+            const isDark = state.darkMode;
+            const bgClass = isDark ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-900';
+            const cardClass = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+
+            return (
+                <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${bgClass}`}>
+                    <header className={`px-6 py-4 shadow-md flex justify-between items-center sticky top-0 z-30 ${isDark ? 'bg-slate-900 border-b border-slate-800' : 'bg-white border-b border-slate-200'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className="bg-blue-600 text-white p-2 rounded-lg"><Settings size={24}/></div>
+                            <div><h1 className="font-bold text-xl leading-none">Control de Mesa</h1></div>
+                        </div>
+                        {state.bellAlert === 'warning' && <div className="bg-yellow-500 text-black px-6 py-2 rounded-full font-black animate-pulse flex gap-2"><Bell/> Preparar Campana</div>}
+                        {state.bellAlert === 'ring' && <div className="bg-red-600 text-white px-6 py-2 rounded-full font-black animate-bounce flex gap-2"><Bell fill="currentColor"/> ¡TOCAR CAMPANA!</div>}
+                        <div className="flex gap-4">
+                            <button onClick={() => setShowPreview(!showPreview)} className={`flex items-center gap-2 px-4 rounded-lg font-bold text-sm ${showPreview ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{showPreview ? <Eye size={18}/> : <EyeOff size={18}/>} Preview</button>
+                            <button onClick={actions.toggleDarkMode} className={`p-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>{isDark ? <Sun size={20}/> : <Moon size={20}/>}</button>
+                            <button onClick={() => setMode('welcome')} className="text-red-500 font-bold flex items-center gap-2 hover:bg-red-50 px-4 rounded-lg transition"><LogOut size={20}/> Salir</button>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1800px] mx-auto w-full relative pb-32">
+                        <TeamControl title="LOCAL" team="home" state={state} actions={actions} isDark={isDark} cardClass={cardClass} />
+                        
+                        <section className="lg:col-span-6 flex flex-col gap-6">
+                            <div className={`${cardClass} rounded-3xl p-8 shadow-xl relative overflow-hidden`}>
+                                <div className="flex justify-between items-center mb-6">
+                                    <div className={`flex items-center gap-4 px-4 py-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}>
+                                        <button onClick={()=>actions.adjustPeriod(-1)} className="p-1 hover:text-blue-500"><Minus size={20}/></button>
+                                        <span className="text-xl font-black uppercase">Periodo {state.period}</span>
+                                        <button onClick={()=>actions.adjustPeriod(1)} className="p-1 hover:text-blue-500"><Plus size={20}/></button>
+                                    </div>
+                                    <button onClick={()=>{ setEditData({ m: Math.floor(state.mainTime/60), s: Math.floor(state.mainTime%60), shot: Math.ceil(state.shotTime) }); setShowTimeEditor(true); }} className="flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm bg-slate-700 text-white"><Edit3 size={16}/> Editar</button>
+                                </div>
+                                <div className={`text-center text-[8rem] font-mono font-bold tracking-tighter leading-none my-2 cursor-pointer select-none ${state.isRunning?'text-green-500':state.mainTime===0?'text-red-500':isDark?'text-white':'text-slate-800'}`} onClick={actions.toggleMain}>
+                                    {formatTime(state.mainTime)}
+                                </div>
+                                <div className="flex gap-6 mt-8">
+                                    <button onClick={actions.toggleMain} className={`flex-1 h-24 rounded-2xl text-4xl font-black flex items-center justify-center gap-4 shadow-xl transition active:scale-[0.98] ${state.isRunning?'bg-red-500 text-white':'bg-green-500 text-white'}`}>{state.isRunning ? <><Pause size={40} fill="currentColor"/> PAUSAR</> : <><Play size={40} fill="currentColor"/> INICIAR</>}</button>
+                                    <button onClick={()=>broadcast({...state, buzzerTrigger: state.buzzerTrigger+1})} className={`w-32 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 ${isDark?'bg-slate-700 text-white':'bg-slate-300 text-slate-800'}`}><Volume2 size={40}/></button>
+                                </div>
+                                {state.periodFinished && (<div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-20"><button onClick={actions.nextPeriod} className="bg-white text-blue-900 px-10 py-6 rounded-full font-black text-2xl flex items-center gap-4 hover:scale-105 transition">INICIAR SIGUIENTE CUARTO <ArrowRight size={32}/></button></div>)}
+                            </div>
+
+                            <div className={`rounded-3xl p-8 shadow-xl border-4 relative transition-colors ${state.shotClockExpired ? 'bg-red-900/20 border-red-500' : isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-slate-400 uppercase font-black text-lg tracking-[0.2em]">Posesión</span>
+                                    {!state.isShotActive && !state.shotClockExpired && <span className="bg-yellow-500 text-black font-bold px-3 py-1 rounded-full text-sm">EN ESPERA</span>}
+                                </div>
+                                <div className="flex items-center justify-between gap-8">
+                                    <div className={`text-[8rem] font-mono font-bold leading-none ${state.shotClockExpired?'text-red-500 opacity-50':'text-red-500'}`}>{state.shotClockExpired ? "00" : Math.ceil(state.shotTime)}</div>
+                                    <div className="flex flex-col gap-3 flex-1">
+                                        <div className="flex gap-3">
+                                            <button onClick={()=>actions.resetShot(state.config.shotFull)} className="flex-1 h-20 rounded-xl font-bold text-2xl bg-slate-700 text-white hover:bg-blue-600 border-2 border-slate-600 hover:border-blue-400 flex flex-col items-center justify-center leading-none"><span className="text-3xl">{state.config.shotFull}</span><span className="text-xs opacity-50 uppercase">Completa</span></button>
+                                            <button onClick={()=>actions.resetShot(state.config.shotReset)} className="flex-1 h-20 rounded-xl font-bold text-2xl bg-slate-700 text-white hover:bg-blue-600 border-2 border-slate-600 hover:border-blue-400 flex flex-col items-center justify-center leading-none"><span className="text-3xl">{state.config.shotReset}</span><span className="text-xs opacity-50 uppercase">Rebote</span></button>
+                                        </div>
+                                        <button onClick={actions.toggleShotActive} className={`w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 border-2 transition ${state.isShotActive ? 'border-yellow-600 text-yellow-500' : 'border-green-600 text-green-500'}`}>{state.isShotActive ? <><Pause size={16}/> Pausar</> : <><Play size={16}/> Reanudar</>}</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <TeamControl title="VISITANTE" team="away" state={state} actions={actions} isDark={isDark} cardClass={cardClass} />
+
+                        {showPreview && (
+                            <div 
+                                className="fixed z-50 flex flex-col items-end shadow-2xl cursor-move"
+                                style={{ left: previewPos.x, top: previewPos.y }}
+                                onMouseDown={handleMouseDown}
+                            >
+                                <div className="bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-t-lg flex items-center gap-2 w-full cursor-grab active:cursor-grabbing">
+                                    <Move size={12} className="opacity-50"/>
+                                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> LIVE 
+                                    <div className="flex-1"></div>
+                                    <button onClick={(e) => { e.stopPropagation(); setShowPreview(false); }} className="hover:text-red-400"><X size={12}/></button>
+                                </div>
+                                <div className="bg-black border-4 border-slate-700 rounded-b-lg overflow-hidden" style={{width: '320px', height: '180px'}}>
+                                    <div style={{ width: '1920px', height: '1080px', transform: 'scale(0.166)', transformOrigin: 'top left' }}>
+                                        <ScoreboardDisplay state={state} isPreview={true} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {showTimeEditor && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                            <div className={`${isDark?'bg-slate-900 text-white':'bg-white text-slate-900'} p-8 rounded-3xl shadow-2xl max-w-lg w-full border border-slate-700`}>
+                                <h3 className="font-black text-2xl mb-8 text-center uppercase tracking-wider">Ajuste Rápido</h3>
+                                <div className="flex justify-center items-center gap-4 mb-10 font-mono">
+                                    <div className="flex flex-col items-center gap-2"><button onClick={()=>setEditData(p=>({...p, m: p.m+1}))} className="p-2 hover:bg-slate-700 rounded-full"><Plus/></button><input type="number" value={editData.m} onChange={e=>setEditData({...editData, m: +e.target.value})} className="w-24 text-center text-5xl bg-transparent border-b-2 border-slate-500 font-bold"/><button onClick={()=>setEditData(p=>({...p, m: Math.max(0, p.m-1)}))} className="p-2 hover:bg-slate-700 rounded-full"><Minus/></button><span className="text-xs uppercase font-bold opacity-50">Minutos</span></div>
+                                    <span className="text-5xl font-bold pb-8">:</span>
+                                    <div className="flex flex-col items-center gap-2"><button onClick={()=>setEditData(p=>({...p, s: (p.s+1)%60}))} className="p-2 hover:bg-slate-700 rounded-full"><Plus/></button><input type="number" value={editData.s} onChange={e=>setEditData({...editData, s: +e.target.value})} className="w-24 text-center text-5xl bg-transparent border-b-2 border-slate-500 font-bold"/><button onClick={()=>setEditData(p=>({...p, s: p.s<=0?59:p.s-1}))} className="p-2 hover:bg-slate-700 rounded-full"><Minus/></button><span className="text-xs uppercase font-bold opacity-50">Segundos</span></div>
+                                </div>
+                                <div className="mb-8 bg-slate-800/50 p-6 rounded-2xl"><label className="text-sm font-black uppercase opacity-50 block mb-4 text-center">Corrección Posesión</label><div className="flex items-center gap-6"><div className="flex items-center gap-4"><button onClick={()=>setEditData(p=>({...p, shot: Math.max(0, p.shot-1)}))} className="p-3 bg-slate-700 rounded-xl hover:bg-slate-600"><Minus/></button><input type="number" value={editData.shot} onChange={e=>setEditData({...editData, shot: +e.target.value})} className="w-32 text-center text-6xl font-mono font-bold text-red-500 bg-transparent border-b-2 border-slate-600 focus:border-red-500 outline-none"/><button onClick={()=>setEditData(p=>({...p, shot: Math.min(60, p.shot+1)}))} className="p-3 bg-slate-700 rounded-xl hover:bg-slate-600"><Plus/></button></div><input type="range" min="0" max="60" value={editData.shot} onChange={e=>setEditData({...editData, shot: +e.target.value})} className="flex-1 accent-red-500 h-4 rounded-lg cursor-pointer"/></div></div>
+                                <div className="grid grid-cols-2 gap-4"><button onClick={()=>setShowTimeEditor(false)} className="py-4 rounded-xl font-bold border-2 border-slate-600 hover:bg-slate-800 transition">CANCELAR</button><button onClick={actions.manualEditApply} className="py-4 rounded-xl font-bold bg-green-500 text-white hover:bg-green-600 shadow-lg flex items-center justify-center gap-2"><Check strokeWidth={3}/> APLICAR</button></div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const TeamControl = ({ title, team, state, actions, isDark, cardClass }) => {
+            const data = state[team];
+            return (
+                <section className={`lg:col-span-3 ${cardClass} rounded-3xl p-6 shadow-xl flex flex-col gap-6 border-t-8 relative overflow-hidden`} style={{borderColor: data.color}}>
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-transparent to-current opacity-5 pointer-events-none rounded-bl-full" style={{color: data.color}}></div>
+                    <div className="flex justify-between items-center">
+                        <span className="uppercase font-black text-sm opacity-50 tracking-widest">{title}</span>
+                        <input type="color" value={data.color} onChange={e=>actions.updateTeam(team, 'color', e.target.value)} className="w-8 h-8 rounded-full cursor-pointer bg-transparent border-2 border-slate-200 shadow-sm"/>
+                    </div>
+                    <input value={data.name} onChange={e=>actions.updateTeam(team, 'name', e.target.value)} className={`text-3xl font-black bg-transparent border-b-2 focus:outline-none w-full py-2 ${isDark ? 'border-slate-700 focus:border-blue-500' : 'border-slate-200 focus:border-blue-500'}`}/>
+                    <label className={`flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer font-bold text-sm border-2 border-dashed transition ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-300 hover:bg-slate-50'}`}>
+                        <ImageIcon size={16}/> {data.logo ? 'Cambiar Escudo' : 'Subir Escudo'} <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={e=>actions.handleLogo(team, e)}/>
+                    </label>
+                    <div className={`flex-1 flex items-center justify-center text-9xl font-mono font-bold rounded-2xl shadow-inner py-8 ${isDark?'bg-black/30':'bg-slate-100'}`} style={{color: data.color}}>{data.score}</div>
+                    <div className="grid grid-cols-3 gap-3 mt-auto">
+                        <button onClick={()=>actions.updateTeam(team, 'score', Math.max(0, data.score-1))} className={`col-span-1 h-20 rounded-xl flex items-center justify-center ${isDark?'bg-slate-800 hover:bg-slate-700':'bg-slate-200 hover:bg-slate-300'}`}><Minus size={32}/></button>
+                        <button onClick={()=>actions.addGoal(team)} className="col-span-2 h-20 rounded-xl bg-blue-600 text-white font-black text-3xl shadow-lg shadow-blue-600/40 hover:bg-blue-500 active:scale-95 transition">GOL</button>
+                    </div>
+                </section>
+            );
+        };
+
+        const SetupView = ({ setupConfig, setSetupConfig, setMode, startGame }) => (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 text-white font-sans">
+                <div className="bg-slate-800 p-8 rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-700">
+                    <div className="flex justify-between items-center mb-8"><h2 className="text-3xl font-bold flex items-center gap-3 text-white"><Settings className="text-blue-500 w-8 h-8"/> Configuración</h2><button onClick={() => setMode('welcome')} className="p-2 hover:bg-slate-700 rounded-full"><X/></button></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                        <div className="space-y-6">
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b border-slate-600 pb-2">Tiempos Generales</h3>
+                            <div><label className="block text-sm font-bold text-slate-400 mb-1">Minutos por Cuarto</label><input type="number" value={setupConfig.periodLength} onChange={e=>setSetupConfig({...setupConfig, periodLength: +e.target.value})} className="w-full bg-slate-900 border-2 border-slate-600 p-3 rounded-xl text-2xl font-bold font-mono focus:border-blue-500 outline-none transition"/></div>
+                            <div><label className="block text-sm font-bold text-slate-400 mb-1">Número de Cuartos</label><input type="number" value={setupConfig.periods} onChange={e=>setSetupConfig({...setupConfig, periods: +e.target.value})} className="w-full bg-slate-900 border-2 border-slate-600 p-3 rounded-xl text-2xl font-bold font-mono focus:border-blue-500 outline-none transition"/></div>
+                        </div>
+                        <div className="space-y-6">
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b border-slate-600 pb-2">Reglas de Posesión</h3>
+                            <div><label className="block text-sm font-bold text-slate-400 mb-1">Posesión Completa (seg)</label><input type="number" value={setupConfig.shotFull} onChange={e=>setSetupConfig({...setupConfig, shotFull: +e.target.value})} className="w-full bg-slate-900 border-2 border-slate-600 p-3 rounded-xl text-2xl font-bold font-mono focus:border-blue-500 outline-none transition"/></div>
+                            <div><label className="block text-sm font-bold text-slate-400 mb-1">Posesión Rebote (seg)</label><input type="number" value={setupConfig.shotReset} onChange={e=>setSetupConfig({...setupConfig, shotReset: +e.target.value})} className="w-full bg-slate-900 border-2 border-slate-600 p-3 rounded-xl text-2xl font-bold font-mono focus:border-blue-500 outline-none transition"/></div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-4 bg-blue-900/30 border border-blue-800 rounded-xl mb-8 text-blue-200"><input type="checkbox" checked={setupConfig.lastMinuteBell} onChange={e=>setSetupConfig({...setupConfig, lastMinuteBell: e.target.checked})} className="w-6 h-6 accent-blue-500"/><label className="font-bold cursor-pointer select-none">Activar Alerta de Campana (Mesa)</label></div>
+                    <button onClick={startGame} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-2xl hover:bg-blue-700 transition shadow-xl hover:shadow-blue-600/20 transform hover:-translate-y-1 flex items-center justify-center gap-3">EMPEZAR PARTIDO <Play fill="currentColor"/></button>
+                </div>
+            </div>
+        );
+
+        const WelcomeView = ({ setMode }) => (
+            <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+                <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/water.png')]"></div>
+                <h1 className="text-6xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 tracking-tighter relative z-10">WATERPOLO</h1>
+                <p className="text-slate-400 mb-12 text-xl tracking-widest uppercase relative z-10">Professional Scoreboard</p>
+                <div className="grid gap-6 w-full max-w-md relative z-10">
+                <button onClick={() => setMode('setup')} className="bg-blue-600 p-8 rounded-2xl font-bold text-3xl hover:bg-blue-500 transition flex items-center justify-between group shadow-lg shadow-blue-900/50"><div className="flex items-center gap-4"><Laptop size={32}/> Control de Mesa</div> <ArrowRight className="group-hover:translate-x-2 transition"/></button>
+                <button onClick={() => setMode('display')} className="bg-slate-800 p-8 rounded-2xl font-bold text-3xl hover:bg-slate-700 transition flex items-center justify-between border border-slate-700 group"><div className="flex items-center gap-4"><Monitor size={32}/> Pantalla TV</div> <ArrowRight className="group-hover:translate-x-2 transition"/></button>
+                </div>
+            </div>
+        );
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<WaterPoloScoreboardFinal />);
+    </script>
+</body>
+</html>
