@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marcador Waterpolo TV Max - Logos Grandes</title>
+    <title>Marcador Waterpolo TV Max - Final V2</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -38,10 +38,11 @@
         import { 
             Play, Pause, Volume2, Upload, Monitor, Laptop, 
             Plus, Minus, Settings, X, Edit3, Sun, Moon, LogOut, 
-            Bell, ArrowRight, Check, Eye, EyeOff, Image as ImageIcon, Trophy, Move
+            Bell, ArrowRight, Check, Eye, EyeOff, Image as ImageIcon, Trophy, Move,
+            Clapperboard // Icono para las animaciones
         } from 'lucide-react';
 
-        const CHANNEL_NAME = 'waterpolo_final_v15_worker';
+        const CHANNEL_NAME = 'waterpolo_final_v16_worker';
 
         // --- WORKER BLOB ---
         const workerCode = `
@@ -82,7 +83,8 @@
             buzzerTrigger: 0,
             showGoalAnimation: null, 
             bellAlert: null,
-            darkMode: true
+            darkMode: true,
+            animationsOn: true
         };
 
         // --- HELPER TIEMPO ---
@@ -102,11 +104,11 @@
             return `${m}:${s.toString().padStart(2, '0')}`;
         };
 
-        // --- DISPLAY COMPONENT (MODIFICADO PARA LOGOS GRANDES) ---
+        // --- DISPLAY COMPONENT ---
         const ScoreboardDisplay = ({ state, isPreview = false }) => {
             if (!state || !state.home || !state.away) return null;
 
-            const { home, away, mainTime, shotTime, showGoalAnimation, periodFinished, darkMode, isRunning } = state;
+            const { home, away, mainTime, shotTime, showGoalAnimation, periodFinished, darkMode, isRunning, animationsOn } = state;
             const scoreDiff = home.score - away.score;
             
             const getBackgroundStyle = () => {
@@ -169,12 +171,11 @@
                              style={{ opacity: (mainTime % 1) > 0.5 ? 1 : 0.2, boxShadow: 'inset 0 0 100px rgba(220, 38, 38, 0.4)' }}></div>
                     )}
 
-                    {/* OVERLAYS (GOL, FIN CUARTO) */}
-                    {showGoalAnimation && (
+                    {/* OVERLAYS (GOL, FIN CUARTO) - SOLO SI ANIMACIONES ESTAN ON O ES FIN DE PERIODO */}
+                    {showGoalAnimation && animationsOn && (
                     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200 overflow-hidden">
                         <div className="absolute inset-0 animate-[ping_1.5s_ease-out_infinite] opacity-20 rounded-full scale-150" style={{backgroundColor: showGoalAnimation === 'home' ? home.color : away.color}}></div>
                         <div className="relative z-10 flex flex-col items-center transform transition-all animate-in zoom-in-50 duration-300">
-                            {/* Logo en overlay de GOL también más grande */}
                             {state[showGoalAnimation].logo && <img src={state[showGoalAnimation].logo} className="h-32 w-32 object-contain mb-4 animate-bounce"/>}
                             <h1 className="text-[25vw] font-black italic text-transparent bg-clip-text animate-bounce drop-shadow-[0_0_60px_rgba(255,255,255,0.9)] leading-none"
                                 style={{ backgroundImage: `linear-gradient(to bottom, #fff, ${showGoalAnimation === 'home' ? home.color : away.color})`, WebkitTextStroke: '3px white' }}>GOL</h1>
@@ -203,40 +204,53 @@
                     )}
 
                     <div className="relative z-20 flex flex-col h-full p-2 md:p-4 gap-2">
-                        {/* HEADER */}
-                        <div className="flex justify-center h-[10%] shrink-0">
-                            <div className={`${bgCard} border-b-4 ${borderColor} px-16 py-1 rounded-b-[3rem] flex items-center gap-6 shadow-2xl backdrop-blur-sm justify-center`}>
-                                <span className={`uppercase text-2xl md:text-3xl font-bold tracking-widest ${txtSecondary}`}>Periodo</span>
-                                <div className={`text-6xl md:text-8xl font-black ${txtPrimary} leading-none flex items-center justify-center w-24 h-24 rounded-2xl ${darkMode?'bg-slate-800':'bg-slate-100'}`}>{state.period}</div>
+                        {/* HEADER V17.2 - AJUSTADO PARA NO SALIRSE */}
+                        {/* h-[18%] reduce un poco la altura total para dejar aire con el reloj. mb-4 añade separación fisica */}
+                        <div className="flex justify-center h-[18%] shrink-0 z-30 relative mb-6"> 
+                            <div className={`${bgCard} border-b-[6px] ${borderColor} px-16 pt-2 pb-6 rounded-b-[3.5rem] flex flex-col items-center shadow-2xl backdrop-blur-md justify-center relative overflow-hidden min-w-[40vw]`}>
+                                
+                                {/* Decoración de brillo */}
+                                <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-40"></div>
+
+                                {/* Texto PERIODO: Pegado arriba */}
+                                <span className={`uppercase text-lg md:text-xl font-black tracking-[0.4em] opacity-60 ${txtSecondary} select-none transform translate-y-2`}>
+                                    Periodo
+                                </span>
+
+                                {/* NÚMEROS: Ajustados para encajar perfecto */}
+                                <div className="flex items-baseline gap-3 leading-none pt-2">
+                                    {/* ACTUAL: 15vh es enorme pero cabe seguro. line-height apretado */}
+                                    <span className={`text-[15vh] font-black tracking-tighter filter drop-shadow-2xl ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} 
+                                          style={{ lineHeight: '0.8', paddingBottom: '1vh' }}>
+                                        {state.period}
+                                    </span>
+
+                                    {/* BARRA */}
+                                    <span className={`text-[8vh] font-black opacity-30 mx-1 ${txtPrimary} transform -translate-y-2`}>/</span>
+
+                                    {/* TOTAL */}
+                                    <span className={`text-[8vh] font-black opacity-60 ${txtPrimary} transform -translate-y-2`}>
+                                        {state.config.periods}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
                         {/* GRID PRINCIPAL */}
                         <div className="flex-1 flex items-center justify-between pb-4 w-full">
                             
-                            {/* LOCAL (LOGO DE FONDO GIGANTE) */}
+                            {/* LOCAL */}
                             <div className="flex-1 flex flex-col items-center justify-center h-full relative overflow-hidden" style={{maxWidth: '35%'}}>
-                                {/* CAPA FONDO LOGO */}
                                 <div className="absolute inset-0 flex items-center justify-center z-0 opacity-10 p-8 pointer-events-none">
                                     {home.logo ? 
                                         <img src={home.logo} className="w-full h-full object-contain drop-shadow-2xl grayscale-[0.1]" /> : 
                                         <div className={`text-[40vh] font-black opacity-10 flex items-center justify-center`} style={{color: home.color}}>L</div>
                                     }
                                 </div>
-                                
-                                {/* CAPA CONTENIDO (ENCIMA DEL LOGO) */}
                                 <div className="relative z-10 w-full flex flex-col items-center justify-center">
                                     {scoreDiff > 0 && <Trophy className="absolute -top-24 text-yellow-400 w-20 h-20 animate-bounce drop-shadow-xl z-20" />}
-                                    
-                                    <h2 className={`text-[4vw] font-black uppercase text-center leading-none mb-2 drop-shadow-lg w-full px-2 truncate ${txtPrimary}`} 
-                                        style={{textShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>
-                                        {home.name}
-                                    </h2>
-                                    
-                                    <div className="text-[45vh] font-mono font-bold leading-none drop-shadow-2xl transform scale-y-110" 
-                                         style={{color: home.color, textShadow: '8px 8px 0px rgba(0,0,0,0.4), 0 0 40px rgba(0,0,0,0.2)'}}>
-                                         {home.score}
-                                    </div>
+                                    <h2 className={`text-[4vw] font-black uppercase text-center leading-none mb-2 drop-shadow-lg w-full px-2 truncate ${txtPrimary}`} style={{textShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>{home.name}</h2>
+                                    <div className="text-[45vh] font-mono font-bold leading-none drop-shadow-2xl transform scale-y-110" style={{color: home.color, textShadow: '8px 8px 0px rgba(0,0,0,0.4), 0 0 40px rgba(0,0,0,0.2)'}}>{home.score}</div>
                                 </div>
                             </div>
 
@@ -257,29 +271,18 @@
                                 )}
                             </div>
 
-                            {/* VISITANTE (LOGO DE FONDO GIGANTE) */}
+                            {/* VISITANTE */}
                             <div className="flex-1 flex flex-col items-center justify-center h-full relative overflow-hidden" style={{maxWidth: '35%'}}>
-                                {/* CAPA FONDO LOGO */}
                                 <div className="absolute inset-0 flex items-center justify-center z-0 opacity-10 p-8 pointer-events-none">
                                     {away.logo ? 
                                         <img src={away.logo} className="w-full h-full object-contain drop-shadow-2xl grayscale-[0.1]" /> : 
                                         <div className={`text-[40vh] font-black opacity-10 flex items-center justify-center`} style={{color: away.color}}>V</div>
                                     }
                                 </div>
-
-                                {/* CAPA CONTENIDO */}
                                 <div className="relative z-10 w-full flex flex-col items-center justify-center">
                                     {scoreDiff < 0 && <Trophy className="absolute -top-24 text-yellow-400 w-20 h-20 animate-bounce drop-shadow-xl z-20" />}
-                                    
-                                    <h2 className={`text-[4vw] font-black uppercase text-center leading-none mb-2 drop-shadow-lg w-full px-2 truncate ${txtPrimary}`}
-                                        style={{textShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>
-                                        {away.name}
-                                    </h2>
-                                    
-                                    <div className="text-[45vh] font-mono font-bold leading-none drop-shadow-2xl transform scale-y-110" 
-                                         style={{color: away.color, textShadow: '8px 8px 0px rgba(0,0,0,0.4), 0 0 40px rgba(0,0,0,0.2)'}}>
-                                         {away.score}
-                                    </div>
+                                    <h2 className={`text-[4vw] font-black uppercase text-center leading-none mb-2 drop-shadow-lg w-full px-2 truncate ${txtPrimary}`} style={{textShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>{away.name}</h2>
+                                    <div className="text-[45vh] font-mono font-bold leading-none drop-shadow-2xl transform scale-y-110" style={{color: away.color, textShadow: '8px 8px 0px rgba(0,0,0,0.4), 0 0 40px rgba(0,0,0,0.2)'}}>{away.score}</div>
                                 </div>
                             </div>
                         </div>
@@ -297,6 +300,7 @@
             const stateRef = useRef(INITIAL_STATE);
             const lastTickRef = useRef(0);
             const workerRef = useRef(null); 
+            const goalTimeoutRef = useRef(null); // NUEVO: Para controlar el bug del bucle
             
             const [previewPos, setPreviewPos] = useState({ x: window.innerWidth - 340, y: window.innerHeight - 200 });
             const [isDragging, setIsDragging] = useState(false);
@@ -315,7 +319,7 @@
                 channelRef.current.onmessage = (event) => {
                     if (event.data) setState(prev => ({ ...prev, ...event.data }));
                 };
-                const saved = localStorage.getItem('wp_final_v15_state');
+                const saved = localStorage.getItem('wp_final_v16_state');
                 if (saved) {
                     try {
                         const parsed = JSON.parse(saved);
@@ -393,7 +397,7 @@
                 channelRef.current?.postMessage(newState);
                 
                 if (Math.floor(mainTime) !== Math.floor(currentState.mainTime)) {
-                     localStorage.setItem('wp_final_v15_state', JSON.stringify(newState));
+                     localStorage.setItem('wp_final_v16_state', JSON.stringify(newState));
                 }
 
             }, []);
@@ -431,26 +435,47 @@
             const broadcast = (newState) => {
                 setState(newState);
                 channelRef.current?.postMessage(newState);
-                localStorage.setItem('wp_final_v15_state', JSON.stringify(newState));
+                localStorage.setItem('wp_final_v16_state', JSON.stringify(newState));
             };
 
             const actions = {
                 startGame: () => {
-                    const newState = { ...INITIAL_STATE, config: setupConfig, mainTime: setupConfig.periodLength * 60, shotTime: setupConfig.shotFull, darkMode: state.darkMode };
+                    const newState = { ...INITIAL_STATE, config: setupConfig, mainTime: setupConfig.periodLength * 60, shotTime: setupConfig.shotFull, darkMode: state.darkMode, animationsOn: state.animationsOn };
                     broadcast(newState);
                     setMode('controller');
                 },
                 toggleMain: () => broadcast({ ...state, isRunning: !state.isRunning }),
                 resetShot: (secs) => broadcast({ ...state, shotTime: secs, shotClockExpired: false, isShotActive: true }),
                 toggleShotActive: () => broadcast({ ...state, isShotActive: !state.isShotActive }),
+                
+                // --- FIX DEL BUG DEL GOL ---
                 addGoal: (team) => {
-                    const cur = { ...state }; cur[team].score++; cur.showGoalAnimation = team;
-                    broadcast(cur);
-                    setTimeout(() => {
-                        const fresh = { ...stateRef.current }; fresh.showGoalAnimation = null;
-                        setState(fresh);
-                        channelRef.current?.postMessage(fresh);
-                    }, 3500);
+                    const cur = { ...state }; 
+                    cur[team].score++; 
+
+                    // Si animaciones estan activadas:
+                    if (state.animationsOn) {
+                        // 1. Limpiar timeout anterior si existe para evitar bucle
+                        if (goalTimeoutRef.current) {
+                            clearTimeout(goalTimeoutRef.current);
+                        }
+
+                        // 2. Mostrar animación
+                        cur.showGoalAnimation = team;
+                        broadcast(cur);
+                        
+                        // 3. Crear nuevo timeout limpio (3 segundos)
+                        goalTimeoutRef.current = setTimeout(() => {
+                            const fresh = { ...stateRef.current }; 
+                            fresh.showGoalAnimation = null;
+                            setState(fresh);
+                            channelRef.current?.postMessage(fresh);
+                            goalTimeoutRef.current = null; // Reset ref
+                        }, 3000); 
+                    } else {
+                        // Si animaciones OFF, solo sumar gol
+                        broadcast(cur);
+                    }
                 },
                 nextPeriod: () => broadcast({ ...state, period: state.period + 1, mainTime: state.config.periodLength * 60, shotTime: state.config.shotFull, isRunning: false, isShotActive: false, shotClockExpired: false, periodFinished: false, bellAlert: null }),
                 adjustPeriod: (d) => broadcast({ ...state, period: Math.max(1, Math.min(state.config.periods, state.period + d)) }),
@@ -467,7 +492,8 @@
                     broadcast({ ...state, mainTime: (editData.m * 60) + editData.s, shotTime: editData.shot, shotClockExpired: false });
                     setShowTimeEditor(false);
                 },
-                toggleDarkMode: () => broadcast({ ...state, darkMode: !state.darkMode })
+                toggleDarkMode: () => broadcast({ ...state, darkMode: !state.darkMode }),
+                toggleAnimations: () => broadcast({ ...state, animationsOn: !state.animationsOn }) // Accion nueva
             };
 
             const handleMouseDown = (e) => { setIsDragging(true); dragStartRef.current = { x: e.clientX - previewPos.x, y: e.clientY - previewPos.y }; };
@@ -496,6 +522,9 @@
                         {state.bellAlert === 'warning' && <div className="bg-yellow-500 text-black px-6 py-2 rounded-full font-black animate-pulse flex gap-2"><Bell/> Preparar Campana</div>}
                         {state.bellAlert === 'ring' && <div className="bg-red-600 text-white px-6 py-2 rounded-full font-black animate-bounce flex gap-2"><Bell fill="currentColor"/> ¡TOCAR CAMPANA!</div>}
                         <div className="flex gap-4">
+                            <button onClick={actions.toggleAnimations} className={`p-3 rounded-full flex items-center gap-2 transition ${state.animationsOn ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`} title="Activar/Desactivar Animaciones de Gol">
+                                <Clapperboard size={20} />
+                            </button>
                             <button onClick={() => setShowPreview(!showPreview)} className={`flex items-center gap-2 px-4 rounded-lg font-bold text-sm ${showPreview ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{showPreview ? <Eye size={18}/> : <EyeOff size={18}/>} Preview</button>
                             <button onClick={actions.toggleDarkMode} className={`p-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>{isDark ? <Sun size={20}/> : <Moon size={20}/>}</button>
                             <button onClick={() => setMode('welcome')} className="text-red-500 font-bold flex items-center gap-2 hover:bg-red-50 px-4 rounded-lg transition"><LogOut size={20}/> Salir</button>
