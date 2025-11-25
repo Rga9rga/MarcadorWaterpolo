@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marcador Waterpolo TV Max - Final V2</title>
+    <title>Marcador Waterpolo TV Max - FINAL ESTABLE</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -35,16 +35,17 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
+        // Importamos 'Film' en lugar de 'Clapperboard' para asegurar compatibilidad con la versión estable
         import { 
             Play, Pause, Volume2, Upload, Monitor, Laptop, 
             Plus, Minus, Settings, X, Edit3, Sun, Moon, LogOut, 
             Bell, ArrowRight, Check, Eye, EyeOff, Image as ImageIcon, Trophy, Move,
-            Clapperboard // Icono para las animaciones
+            Film 
         } from 'lucide-react';
 
-        const CHANNEL_NAME = 'waterpolo_final_v16_worker';
+        const CHANNEL_NAME = 'waterpolo_final_v18_stable';
 
-        // --- WORKER BLOB ---
+        // --- WORKER BLOB (Mantiene el reloj preciso y evita que se duerma) ---
         const workerCode = `
             let intervalId;
             self.onmessage = function(e) {
@@ -84,7 +85,7 @@
             showGoalAnimation: null, 
             bellAlert: null,
             darkMode: true,
-            animationsOn: true
+            animationsOn: true // Animaciones activadas por defecto
         };
 
         // --- HELPER TIEMPO ---
@@ -171,7 +172,7 @@
                              style={{ opacity: (mainTime % 1) > 0.5 ? 1 : 0.2, boxShadow: 'inset 0 0 100px rgba(220, 38, 38, 0.4)' }}></div>
                     )}
 
-                    {/* OVERLAYS (GOL, FIN CUARTO) - SOLO SI ANIMACIONES ESTAN ON O ES FIN DE PERIODO */}
+                    {/* OVERLAYS: Solo se muestra animación de GOL si animationsOn es true */}
                     {showGoalAnimation && animationsOn && (
                     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200 overflow-hidden">
                         <div className="absolute inset-0 animate-[ping_1.5s_ease-out_infinite] opacity-20 rounded-full scale-150" style={{backgroundColor: showGoalAnimation === 'home' ? home.color : away.color}}></div>
@@ -204,31 +205,19 @@
                     )}
 
                     <div className="relative z-20 flex flex-col h-full p-2 md:p-4 gap-2">
-                        {/* HEADER V17.2 - AJUSTADO PARA NO SALIRSE */}
-                        {/* h-[18%] reduce un poco la altura total para dejar aire con el reloj. mb-4 añade separación fisica */}
+                        {/* HEADER: Periodo */}
                         <div className="flex justify-center h-[18%] shrink-0 z-30 relative mb-6"> 
                             <div className={`${bgCard} border-b-[6px] ${borderColor} px-16 pt-2 pb-6 rounded-b-[3.5rem] flex flex-col items-center shadow-2xl backdrop-blur-md justify-center relative overflow-hidden min-w-[40vw]`}>
-                                
-                                {/* Decoración de brillo */}
                                 <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-40"></div>
-
-                                {/* Texto PERIODO: Pegado arriba */}
                                 <span className={`uppercase text-lg md:text-xl font-black tracking-[0.4em] opacity-60 ${txtSecondary} select-none transform translate-y-2`}>
                                     Periodo
                                 </span>
-
-                                {/* NÚMEROS: Ajustados para encajar perfecto */}
                                 <div className="flex items-baseline gap-3 leading-none pt-2">
-                                    {/* ACTUAL: 15vh es enorme pero cabe seguro. line-height apretado */}
                                     <span className={`text-[15vh] font-black tracking-tighter filter drop-shadow-2xl ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} 
                                           style={{ lineHeight: '0.8', paddingBottom: '1vh' }}>
                                         {state.period}
                                     </span>
-
-                                    {/* BARRA */}
                                     <span className={`text-[8vh] font-black opacity-30 mx-1 ${txtPrimary} transform -translate-y-2`}>/</span>
-
-                                    {/* TOTAL */}
                                     <span className={`text-[8vh] font-black opacity-60 ${txtPrimary} transform -translate-y-2`}>
                                         {state.config.periods}
                                     </span>
@@ -254,7 +243,7 @@
                                 </div>
                             </div>
 
-                            {/* CENTRO */}
+                            {/* CENTRO (Reloj + Posesión) */}
                             <div className="flex flex-col items-center justify-between h-full pt-4 z-10" style={{minWidth: '30%', maxWidth: '30%'}}>
                                 <div className="flex flex-col items-center justify-center flex-1 mb-2">
                                     <div className={getClockClass()}>{formatTime(mainTime)}</div>
@@ -300,7 +289,7 @@
             const stateRef = useRef(INITIAL_STATE);
             const lastTickRef = useRef(0);
             const workerRef = useRef(null); 
-            const goalTimeoutRef = useRef(null); // NUEVO: Para controlar el bug del bucle
+            const goalTimeoutRef = useRef(null); 
             
             const [previewPos, setPreviewPos] = useState({ x: window.innerWidth - 340, y: window.innerHeight - 200 });
             const [isDragging, setIsDragging] = useState(false);
@@ -319,7 +308,7 @@
                 channelRef.current.onmessage = (event) => {
                     if (event.data) setState(prev => ({ ...prev, ...event.data }));
                 };
-                const saved = localStorage.getItem('wp_final_v16_state');
+                const saved = localStorage.getItem('wp_final_v18_state');
                 if (saved) {
                     try {
                         const parsed = JSON.parse(saved);
@@ -397,7 +386,7 @@
                 channelRef.current?.postMessage(newState);
                 
                 if (Math.floor(mainTime) !== Math.floor(currentState.mainTime)) {
-                     localStorage.setItem('wp_final_v16_state', JSON.stringify(newState));
+                     localStorage.setItem('wp_final_v18_state', JSON.stringify(newState));
                 }
 
             }, []);
@@ -435,7 +424,7 @@
             const broadcast = (newState) => {
                 setState(newState);
                 channelRef.current?.postMessage(newState);
-                localStorage.setItem('wp_final_v16_state', JSON.stringify(newState));
+                localStorage.setItem('wp_final_v18_state', JSON.stringify(newState));
             };
 
             const actions = {
@@ -448,14 +437,14 @@
                 resetShot: (secs) => broadcast({ ...state, shotTime: secs, shotClockExpired: false, isShotActive: true }),
                 toggleShotActive: () => broadcast({ ...state, isShotActive: !state.isShotActive }),
                 
-                // --- FIX DEL BUG DEL GOL ---
+                // --- ARREGLO DEL BUG DEL GOL ---
                 addGoal: (team) => {
-                    const cur = { ...state }; 
-                    cur[team].score++; 
+                    // Creamos copia limpia para evitar mutaciones directas
+                    const cur = JSON.parse(JSON.stringify(state)); 
+                    cur[team].score++; // Sumar gol
 
-                    // Si animaciones estan activadas:
                     if (state.animationsOn) {
-                        // 1. Limpiar timeout anterior si existe para evitar bucle
+                        // 1. Limpiar timeout previo si existe (para evitar bucle)
                         if (goalTimeoutRef.current) {
                             clearTimeout(goalTimeoutRef.current);
                         }
@@ -464,16 +453,18 @@
                         cur.showGoalAnimation = team;
                         broadcast(cur);
                         
-                        // 3. Crear nuevo timeout limpio (3 segundos)
+                        // 3. Crear timeout nuevo
                         goalTimeoutRef.current = setTimeout(() => {
                             const fresh = { ...stateRef.current }; 
                             fresh.showGoalAnimation = null;
                             setState(fresh);
                             channelRef.current?.postMessage(fresh);
-                            goalTimeoutRef.current = null; // Reset ref
+                            localStorage.setItem('wp_final_v18_state', JSON.stringify(fresh));
+                            goalTimeoutRef.current = null;
                         }, 3000); 
                     } else {
                         // Si animaciones OFF, solo sumar gol
+                        cur.showGoalAnimation = null;
                         broadcast(cur);
                     }
                 },
@@ -493,7 +484,7 @@
                     setShowTimeEditor(false);
                 },
                 toggleDarkMode: () => broadcast({ ...state, darkMode: !state.darkMode }),
-                toggleAnimations: () => broadcast({ ...state, animationsOn: !state.animationsOn }) // Accion nueva
+                toggleAnimations: () => broadcast({ ...state, animationsOn: !state.animationsOn }) 
             };
 
             const handleMouseDown = (e) => { setIsDragging(true); dragStartRef.current = { x: e.clientX - previewPos.x, y: e.clientY - previewPos.y }; };
@@ -522,8 +513,8 @@
                         {state.bellAlert === 'warning' && <div className="bg-yellow-500 text-black px-6 py-2 rounded-full font-black animate-pulse flex gap-2"><Bell/> Preparar Campana</div>}
                         {state.bellAlert === 'ring' && <div className="bg-red-600 text-white px-6 py-2 rounded-full font-black animate-bounce flex gap-2"><Bell fill="currentColor"/> ¡TOCAR CAMPANA!</div>}
                         <div className="flex gap-4">
-                            <button onClick={actions.toggleAnimations} className={`p-3 rounded-full flex items-center gap-2 transition ${state.animationsOn ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`} title="Activar/Desactivar Animaciones de Gol">
-                                <Clapperboard size={20} />
+                            <button onClick={actions.toggleAnimations} className={`p-3 rounded-full flex items-center gap-2 transition ${state.animationsOn ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`} title={state.animationsOn ? "Desactivar Animaciones" : "Activar Animaciones"}>
+                                <Film size={20} />
                             </button>
                             <button onClick={() => setShowPreview(!showPreview)} className={`flex items-center gap-2 px-4 rounded-lg font-bold text-sm ${showPreview ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{showPreview ? <Eye size={18}/> : <EyeOff size={18}/>} Preview</button>
                             <button onClick={actions.toggleDarkMode} className={`p-3 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>{isDark ? <Sun size={20}/> : <Moon size={20}/>}</button>
